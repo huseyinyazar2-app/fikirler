@@ -461,14 +461,15 @@ export default function App() {
         </header>
 
         {/* Sohbet (İçerik) Alanı */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-gray-50 flex flex-col-reverse">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-gray-50">
           {selectedIdea ? (
-            <div ref={printRef} className="flex flex-col-reverse gap-4 w-full max-w-3xl mx-auto p-4 bg-gray-50">
-              <div className="mb-6 border-b pb-4 mt-4">
+            <div ref={printRef} className="flex flex-col w-full max-w-3xl mx-auto p-4 bg-gray-50 min-h-full">
+              <div className="mb-6 border-b pb-4 mt-4 shrink-0">
                 <h1 className="text-3xl font-bold">{selectedIdea.title}</h1>
                 <p className="text-gray-500 mt-2">Oluşturulma: {format(new Date(), 'dd.MM.yyyy HH:mm')}</p>
               </div>
               
+              <div className="flex flex-col-reverse gap-4 flex-1">
               {entries.map(entry => (
                 <div key={entry.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 group">
                   <div className="flex justify-between items-start mb-2">
@@ -513,6 +514,7 @@ export default function App() {
                   )}
                 </div>
               ))}
+              </div>
               {entries.length === 0 && (
                 <div className="text-center text-gray-400 my-10">Henüz bir içerik eklenmemiş.</div>
               )}

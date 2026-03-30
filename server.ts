@@ -1,5 +1,4 @@
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
 import { createClient } from '@libsql/client';
 import crypto from 'crypto';
 import path from 'path';
@@ -9,18 +8,21 @@ const db = createClient({
   authToken: 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NzQ4NzAzNDgsImlkIjoiMDE5ZDNlODQtMmMwMS03MWZjLTgwMmUtNWZjZjA0MDM1ZWUwIiwicmlkIjoiNGJiNWQ4NTctZmM3ZS00ZTBjLWFhMTAtOTEwZDAwNmE0MGRiIn0.qRy-nSsovltPDTtz6KDqGNCH2Mz4xLHmGTRQXtJogT1z9cl_Wyu3kMvTq2mMH6tDlhkyUeHsgVoAR-DAhMnQAw'
 });
 
-async function startServer() {
-  const app = express();
-  const PORT = 3000;
+const app = express();
+app.use(express.json({ limit: '50mb' }));
 
-  app.use(express.json({ limit: '50mb' }));
+// Initialize DB
+(async () => {
+  try {
+    await db.execute(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT UNIQUE, password TEXT)`);
+    await db.execute(`CREATE TABLE IF NOT EXISTS ideas (id TEXT PRIMARY KEY, user_id TEXT, title TEXT, order_num INTEGER)`);
+    await db.execute(`CREATE TABLE IF NOT EXISTS entries (id TEXT PRIMARY KEY, idea_id TEXT, content TEXT, image TEXT, created_at INTEGER)`);
+  } catch (e) {
+    console.error("DB Init error:", e);
+  }
+})();
 
-  // Initialize DB
-  await db.execute(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT UNIQUE, password TEXT)`);
-  await db.execute(`CREATE TABLE IF NOT EXISTS ideas (id TEXT PRIMARY KEY, user_id TEXT, title TEXT, order_num INTEGER)`);
-  await db.execute(`CREATE TABLE IF NOT EXISTS entries (id TEXT PRIMARY KEY, idea_id TEXT, content TEXT, image TEXT, created_at INTEGER)`);
-
-  // API Routes
+// API Routes
   app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
     try {
@@ -123,8 +125,13 @@ async function startServer() {
     }
   });
 
+export default app;
+
+async function startServer() {
+  const PORT = 3000;
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -143,4 +150,6 @@ async function startServer() {
   });
 }
 
-startServer();
+if (!process.env.VERCEL) {
+  startServer();
+}
