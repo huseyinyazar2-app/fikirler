@@ -75,6 +75,16 @@ app.put('/api/ideas/order', async (req, res) => {
   }
 });
 
+app.put('/api/ideas/:id', async (req, res) => {
+  const { title } = req.body;
+  try {
+    await db.execute({ sql: 'UPDATE ideas SET title = ? WHERE id = ?', args: [title, req.params.id] });
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.delete('/api/ideas/:id', async (req, res) => {
   try {
     await db.execute({ sql: 'DELETE FROM ideas WHERE id = ?', args: [req.params.id] });

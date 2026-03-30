@@ -1,8 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { format } from 'date-fns';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
+import { useReactToPrint } from 'react-to-print';
 import {
   DndContext,
   closestCenter,
@@ -52,7 +51,7 @@ const SortableIdeaItem: React.FC<{ idea: Idea, isSelected: boolean, onClick: () 
         <div {...attributes} {...listeners} className="cursor-grab text-gray-400 hover:text-gray-600 touch-none">
           <GripVertical size={16} />
         </div>
-        <span className="truncate font-medium">{idea.title}</span>
+        <span className="truncate text-sm font-medium">{idea.title}</span>
       </div>
       <button
         onClick={onDelete}
@@ -85,10 +84,11 @@ export default function App() {
   // Düzenleme
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [editingContent, setEditingContent] = useState('');
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editingTitleValue, setEditingTitleValue] = useState('');
 
   // Arayüz Durumu
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   // Referanslar
   const printRef = useRef<HTMLDivElement>(null);
@@ -304,29 +304,25 @@ export default function App() {
     setEditingContent('');
   };
 
-  const handleDownloadPdf = async () => {
-    if (!printRef.current) return;
-    setIsGeneratingPdf(true);
+  const handleSaveTitle = async () => {
+    if (!editingTitleValue.trim() || !selectedIdeaId) return;
     try {
-      const canvas = await html2canvas(printRef.current, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: '#ffffff'
+      await fetch(`/api/ideas/${selectedIdeaId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: editingTitleValue.trim() })
       });
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`${selectedIdea?.title || 'Fikirler'}.pdf`);
-    } catch (error) {
-      console.error("PDF oluşturulurken hata:", error);
-      alert("PDF oluşturulurken bir hata oluştu.");
-    } finally {
-      setIsGeneratingPdf(false);
+      setIdeas(ideas.map(i => i.id === selectedIdeaId ? { ...i, title: editingTitleValue.trim() } : i));
+      setIsEditingTitle(false);
+    } catch (err) {
+      console.error("Başlık güncellenemedi:", err);
     }
   };
+
+  const handleDownloadPdf = useReactToPrint({
+    content: () => printRef.current,
+    documentTitle: ideas.find(i => i.id === selectedIdeaId)?.title || 'Fikirler',
+  });
 
   if (!user) {
     return (
@@ -449,13 +445,12 @@ export default function App() {
           </div>
           {selectedIdea && (
             <button 
-              onClick={handleDownloadPdf}
-              disabled={isGeneratingPdf}
-              className="flex items-center gap-2 text-gray-600 hover:text-blue-600 transition-colors shrink-0 disabled:opacity-50"
-              title="PDF Olarak İndir"
+              onClick={() => handleDownloadPdf()}
+              className="flex items-center gap-2 text-gray-600 hover:text-blue-600 transition-colors shrink-0 print:hidden"
+              title="Yazdır / PDF Olarak Kaydet"
             >
               <Download size={20} />
-              <span className="hidden sm:inline">{isGeneratingPdf ? 'İndiriliyor...' : 'PDF İndir'}</span>
+              <span className="hidden sm:inline">PDF İndir</span>
             </button>
           )}
         </header>
@@ -464,8 +459,37 @@ export default function App() {
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-gray-50">
           {selectedIdea ? (
             <div ref={printRef} className="flex flex-col w-full max-w-3xl mx-auto p-4 bg-gray-50 min-h-full">
-              <div className="mb-6 border-b pb-4 mt-4 shrink-0">
-                <h1 className="text-3xl font-bold">{selectedIdea.title}</h1>
+              <div className="mb-6 border-b pb-4 mt-4 shrink-0 group/title">
+                {isEditingTitle ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={editingTitleValue}
+                      onChange={(e) => setEditingTitleValue(e.target.value)}
+                      className="text-3xl font-bold border-b-2 border-blue-500 focus:outline-none bg-transparent w-full"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSaveTitle();
+                        if (e.key === 'Escape') setIsEditingTitle(false);
+                      }}
+                    />
+                    <button onClick={handleSaveTitle} className="text-green-600 hover:text-green-700 p-1"><Check size={24} /></button>
+                    <button onClick={() => setIsEditingTitle(false)} className="text-gray-400 hover:text-gray-600 p-1"><X size={24} /></button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <h1 className="text-3xl font-bold">{selectedIdea.title}</h1>
+                    <button
+                      onClick={() => {
+                        setEditingTitleValue(selectedIdea.title);
+                        setIsEditingTitle(true);
+                      }}
+                      className="text-gray-400 hover:text-blue-500 opacity-0 group-hover/title:opacity-100 transition-opacity print:hidden"
+                    >
+                      <Edit2 size={20} />
+                    </button>
+                  </div>
+                )}
                 <p className="text-gray-500 mt-2">Oluşturulma: {format(new Date(), 'dd.MM.yyyy HH:mm')}</p>
               </div>
               
@@ -476,7 +500,7 @@ export default function App() {
                     <span className="text-xs text-gray-400 font-medium">
                       {format(entry.createdAt, 'dd.MM.yyyy HH:mm')}
                     </span>
-                    <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity" data-html2canvas-ignore>
+                    <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity print:hidden">
                       <button onClick={() => handleEditEntry(entry)} className="text-gray-400 hover:text-blue-500" title="Düzenle">
                         <Edit2 size={16} />
                       </button>
