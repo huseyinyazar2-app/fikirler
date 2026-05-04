@@ -16,6 +16,17 @@ app.use(express.json({ limit: '50mb' }));
     await db.execute(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT UNIQUE, password TEXT)`);
     await db.execute(`CREATE TABLE IF NOT EXISTS ideas (id TEXT PRIMARY KEY, user_id TEXT, title TEXT, order_num INTEGER)`);
     await db.execute(`CREATE TABLE IF NOT EXISTS entries (id TEXT PRIMARY KEY, idea_id TEXT, content TEXT, image TEXT, created_at INTEGER)`);
+    await db.execute(`CREATE TABLE IF NOT EXISTS categories (id TEXT PRIMARY KEY, user_id TEXT, name TEXT, order_num INTEGER)`);
+    
+    // Add category_id to ideas if it doesn't exist
+    try {
+      await db.execute(`ALTER TABLE ideas ADD COLUMN category_id TEXT`);
+    } catch (e: any) {
+      if (!e.message?.toLowerCase().includes('duplicate column')) {
+        // Ignore duplicate column error but log others
+        console.error("Column add warning:", e.message);
+      }
+    }
   } catch (e) {
     console.error("DB Init error:", e);
   }
@@ -54,9 +65,9 @@ app.get('/api/ideas', async (req, res) => {
 });
 
 app.post('/api/ideas', async (req, res) => {
-  const { id, userId, title, orderNum } = req.body;
+  const { id, userId, title, orderNum, categoryId } = req.body;
   try {
-    await db.execute({ sql: 'INSERT INTO ideas (id, user_id, title, order_num) VALUES (?, ?, ?, ?)', args: [id, userId, title, orderNum] });
+    await db.execute({ sql: 'INSERT INTO ideas (id, user_id, title, order_num, category_id) VALUES (?, ?, ?, ?, ?)', args: [id, userId, title, orderNum, categoryId || null] });
     res.json({ success: true });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -76,9 +87,14 @@ app.put('/api/ideas/order', async (req, res) => {
 });
 
 app.put('/api/ideas/:id', async (req, res) => {
-  const { title } = req.body;
+  const { title, category_id } = req.body;
   try {
-    await db.execute({ sql: 'UPDATE ideas SET title = ? WHERE id = ?', args: [title, req.params.id] });
+    if (title !== undefined) {
+      await db.execute({ sql: 'UPDATE ideas SET title = ? WHERE id = ?', args: [title, req.params.id] });
+    }
+    if (category_id !== undefined) {
+      await db.execute({ sql: 'UPDATE ideas SET category_id = ? WHERE id = ?', args: [category_id, req.params.id] });
+    }
     res.json({ success: true });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -89,6 +105,48 @@ app.delete('/api/ideas/:id', async (req, res) => {
   try {
     await db.execute({ sql: 'DELETE FROM ideas WHERE id = ?', args: [req.params.id] });
     await db.execute({ sql: 'DELETE FROM entries WHERE idea_id = ?', args: [req.params.id] });
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Categories API
+app.get('/api/categories', async (req, res) => {
+  const userId = req.query.userId as string;
+  try {
+    const result = await db.execute({ sql: 'SELECT * FROM categories WHERE user_id = ? ORDER BY order_num ASC', args: [userId] });
+    res.json(result.rows);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/categories', async (req, res) => {
+  const { id, userId, name, orderNum } = req.body;
+  try {
+    await db.execute({ sql: 'INSERT INTO categories (id, user_id, name, order_num) VALUES (?, ?, ?, ?)', args: [id, userId, name, orderNum] });
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put('/api/categories/:id', async (req, res) => {
+  const { name } = req.body;
+  try {
+    await db.execute({ sql: 'UPDATE categories SET name = ? WHERE id = ?', args: [name, req.params.id] });
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/categories/:id', async (req, res) => {
+  try {
+    await db.execute({ sql: 'DELETE FROM categories WHERE id = ?', args: [req.params.id] });
+    // Move ideas back to general (null)
+    await db.execute({ sql: 'UPDATE ideas SET category_id = NULL WHERE category_id = ?', args: [req.params.id] });
     res.json({ success: true });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
